@@ -6,7 +6,11 @@ on:
       - 'v*' # Trigger only on version tags like v1.0.0
 
 permissions:
-  contents: write # required for creating releases & uploading assets
+  contents: read # build verification only — publishing is done from the
+  # maintainer's machine via scripts/publish-release.sh, which guarantees the
+  # exe and latest.yml always come from the SAME local build. A CI publish
+  # path would race it and overwrite latest.yml with a differently-hashed
+  # build, breaking electron-updater's sha512 verification (see issue #2).
 
 jobs:
   build:
@@ -29,34 +33,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Package Electron app
+      - name: Package Electron app (verification build, no publish)
         run: npm run build:${{ matrix.os == 'windows-latest' && 'win' || (matrix.os == 'macos-latest' && 'mac' || 'linux') }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_PUBLISH: never # never upload from CI, even on tag builds
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: electron-build-${{ matrix.os }}
-          path: dist/** # electron-builder output folder
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: ./dist
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          overwrite_files: true
-          files: |
-            dist/**/snap-solver-*.exe
-            dist/**/snap-solver-*.dmg
-            dist/**/latest*.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: dist/**
