@@ -222,6 +222,27 @@ function abortCurrentStream(reason: AbortReason) {
 }
 
 /**
+ * Bring the overlay window back from any hidden state (Windows soft-hide,
+ * plain hide, or just behind other windows). Used by the tray menu and the
+ * second-instance handler — recovery paths that must work even when global
+ * shortcuts are not registered.
+ */
+export function restoreAndFocusMainWindow(): void {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (process.platform === 'win32' && isWindowSoftHidden) {
+    restoreSoftHiddenWindow(mainWindow)
+    return
+  }
+  if (!mainWindow.isVisible()) {
+    showMainWindow(mainWindow)
+    return
+  }
+  applyTopMost(mainWindow)
+  mainWindow.moveTop()
+}
+
+/**
  * Fan out a solution lifecycle event to the desktop overlay and any phone
  * connected to the LAN mobile server, keeping both displays in sync.
  */

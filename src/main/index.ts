@@ -38,74 +38,93 @@ import { createWindow } from './main-window'
 import { initAutoUpdater } from './auto-updater'
 import { applyDockVisibility } from './settings'
 import { stopMobileServer } from './mobile-server'
+import { createTray } from './tray'
+import { restoreAndFocusMainWindow } from './shortcuts'
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+// Single instance lock: without it a second launch opens another process
+// against the same userData — the LevelDB localStorage lock then makes the
+// new instance read empty settings (API key lost) and every globalShortcut
+// registration fails. Instead, focus the existing window.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    restoreAndFocusMainWindow()
+  })
 
-  // Hide the dock icon up front until the renderer syncs the real preference.
-  // The persisted `hideDockIcon` value lives in the renderer, so the main
-  // process doesn't know it yet at startup. Starting hidden avoids a dock
-  // flash for users who keep it hidden; if disabled, the renderer sync will
-  // show it again once the window mounts.
-  applyDockVisibility(true)
+  // This method will be called when Electron has finished
+  // initialization and is ready to create browser windows.
+  // Some APIs can only be used after this event occurs.
+  app.whenReady().then(() => {
+    // Set app user model id for windows
+    electronApp.setAppUserModelId('com.electron')
 
-  // Auto-approve getDisplayMedia for system audio loopback capture
-  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      if (sources.length > 0) {
-        callback({ video: sources[0], audio: 'loopback' })
+    // Hide the dock icon up front until the renderer syncs the real preference.
+    // The persisted `hideDockIcon` value lives in the renderer, so the main
+    // process doesn't know it yet at startup. Starting hidden avoids a dock
+    // flash for users who keep it hidden; if disabled, the renderer sync will
+    // show it again once the window mounts.
+    applyDockVisibility(true)
+
+    // Auto-approve getDisplayMedia for system audio loopback capture
+    session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+      desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+        if (sources.length > 0) {
+          callback({ video: sources[0], audio: 'loopback' })
+        }
+      })
+    })
+
+    // Auto-approve microphone access so users can enumerate and select audio input devices
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      if (['media', 'microphone', 'audio'].includes(permission)) {
+        callback(true)
+      } else {
+        callback(false)
+      }
+    })
+
+    // Default open or close DevTools by F12 in development
+    // and ignore CommandOrControl + R in production.
+    // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    createWindow()
+
+    // Tray icon: a visible recovery entry for the frameless, taskbar-less,
+    // soft-hidden overlay window even when global shortcuts fail to register
+    createTray(restoreAndFocusMainWindow)
+
+    // Configure auto-updater
+    initAutoUpdater()
+
+    app.on('activate', function () {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      } else if (global.mainWindow && !global.mainWindow.isVisible()) {
+        global.mainWindow.show()
       }
     })
   })
 
-  // Auto-approve microphone access so users can enumerate and select audio input devices
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    if (['media', 'microphone', 'audio'].includes(permission)) {
-      callback(true)
-    } else {
-      callback(false)
+  // Quit when all windows are closed, except on macOS. There, it's common
+  // for applications and their menu bar to stay active until the user quits
+  // explicitly with Cmd + Q.
+  app.on('window-all-closed', () => {
+    // Unregister all shortcuts when there is no window left
+    globalShortcut.unregisterAll()
+    if (process.platform !== 'darwin') {
+      app.quit()
     }
   })
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+  app.on('before-quit', () => {
+    // Shut down the LAN mobile server; never restore the desktop window on quit
+    stopMobileServer({ showWindow: false })
   })
-
-  createWindow()
-
-  // Configure auto-updater
-  initAutoUpdater()
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    } else if (global.mainWindow && !global.mainWindow.isVisible()) {
-      global.mainWindow.show()
-    }
-  })
-})
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  // Unregister all shortcuts when there is no window left
-  globalShortcut.unregisterAll()
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
-
-app.on('before-quit', () => {
-  // Shut down the LAN mobile server; never restore the desktop window on quit
-  stopMobileServer({ showWindow: false })
-})
+} // end single-instance else block
