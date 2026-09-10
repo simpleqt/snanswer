@@ -38,14 +38,14 @@ export default function HelpPage() {
             欢迎使用截屏解题助手！无论是 编程面试 / 在线考试 还是其他解题场景，
             该工具都可以帮助您快速截图，分析屏幕内容，并给出解答建议。 您可以访问本项目{' '}
             <a
-              href="https://github.com/simpleqt/snanswer/wiki"
+              href="https://github.com/simpleqt/snanswer"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-blue-600 hover:underline"
             >
-              GitHub Wiki
+              GitHub 主页
             </a>{' '}
-            获取更多帮助信息（如隐身相关配置、API Key 申请等）。
+            获取最新版本与帮助信息。
           </p>
           <div className="bg-gray-700/10 rounded-lg p-4">
             <h3 className="font-semibold mb-2">主要功能：</h3>

@@ -87,13 +87,24 @@ function createOpenAIProvider() {
   })
 }
 
-function transformMessages(messages: any[]) {
-  return messages.map((m) => {
+type LooseMessage = {
+  role?: string
+  content?: unknown
+}
+
+type LooseContentPart = {
+  type?: string
+  image?: string
+  text?: string
+}
+
+function transformMessages(messages: ModelMessage[]): ModelMessage[] {
+  return (messages as LooseMessage[]).map((m) => {
     if (Array.isArray(m.content)) {
       return {
         ...m,
-        content: m.content.map((item: any) => {
-          if (item.type === 'image') {
+        content: (m.content as LooseContentPart[]).map((item) => {
+          if (item.type === 'image' && typeof item.image === 'string') {
             const imageData = item.image
             const base64 = imageData.startsWith('data:')
               ? imageData
@@ -117,10 +128,10 @@ function transformMessages(messages: any[]) {
           }
           return item
         })
-      }
+      } as ModelMessage
     }
     // If content is just a string, leave it as is
-    return m
+    return m as ModelMessage
   })
 }
 
@@ -140,9 +151,10 @@ export function getSolutionStream(messages: ModelMessage[], abortSignal?: AbortS
   // For DashScope multimodal, it's often safer to include system prompt as the first message
   const isDashScope =
     settings.apiBaseURL.includes('aliyuncs.com') || settings.apiBaseURL.includes('dashscope')
-  const finalMessages = isDashScope
-    ? [{ role: 'system', content: systemPrompt }, ...transformMessages(messages)]
-    : transformMessages(messages)
+  const transformedMessages = transformMessages(messages)
+  const finalMessages: ModelMessage[] = isDashScope
+    ? [{ role: 'system', content: systemPrompt ?? '' }, ...transformedMessages]
+    : transformedMessages
 
   const { textStream } = streamText({
     model: openai.chat(modelName),
@@ -185,9 +197,10 @@ export function getFollowUpStream(
 
   const isDashScope =
     settings.apiBaseURL.includes('aliyuncs.com') || settings.apiBaseURL.includes('dashscope')
-  const finalMessages = isDashScope
-    ? [{ role: 'system', content: systemPrompt }, ...transformMessages(updatedMessages)]
-    : transformMessages(updatedMessages)
+  const transformedMessages = transformMessages(updatedMessages)
+  const finalMessages: ModelMessage[] = isDashScope
+    ? [{ role: 'system', content: systemPrompt ?? '' }, ...transformedMessages]
+    : transformedMessages
 
   const { textStream } = streamText({
     model: openai.chat(modelName),
@@ -211,9 +224,10 @@ export function getGeneralStream(messages: ModelMessage[], abortSignal?: AbortSi
 
   const isDashScope =
     settings.apiBaseURL.includes('aliyuncs.com') || settings.apiBaseURL.includes('dashscope')
-  const finalMessages = isDashScope
-    ? [{ role: 'system', content: systemPrompt }, ...transformMessages(messages)]
-    : transformMessages(messages)
+  const transformedMessages = transformMessages(messages)
+  const finalMessages: ModelMessage[] = isDashScope
+    ? [{ role: 'system', content: systemPrompt ?? '' }, ...transformedMessages]
+    : transformedMessages
 
   const { textStream } = streamText({
     model: openai.chat(modelName),

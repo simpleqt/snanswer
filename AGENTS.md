@@ -39,9 +39,15 @@ src/
 │   ├── state.ts             # App state object + IPC handlers + change hooks
 │   ├── mobile-server.ts     # LAN mobile display: HTTP + WebSocket server (phone mode)
 │   ├── mobile-types.ts      # Shared mobile types (import-free, web-program safe)
+│   ├── interview-assistant.ts # Real-time interviewer Q&A: question detection + streaming
+│   ├── mouse-double-click.ts # Global click-to-screenshot (uiohook-napi, off/double/single)
+│   ├── wheel-forward.ts     # Wheel forwarding while mouse passthrough is on
+│   ├── global-mouse-hook.ts # Ref-counted uIOhook singleton shared by consumers
+│   ├── model-list.ts        # list-models IPC: fetch /models from any provider
+│   ├── tray.ts              # System tray (window recovery entry, win/mac)
 │   ├── take-screenshot.ts   # desktopCapturer → base64 PNG
 │   ├── transcription.ts     # DashScope WebSocket real-time speech-to-text
-│   ├── auto-updater.ts      # electron-updater (non-macOS only)
+│   ├── auto-updater.ts      # electron-updater: GitHub Releases, silent install on quit
 │   └── index.d.ts           # global.mainWindow type declaration
 ├── preload/
 │   ├── index.ts             # contextBridge API: exposes window.api to renderer
@@ -154,6 +160,8 @@ Optional mode that mirrors the solution stream to a phone browser over the LAN:
 - `start-transcription` / `stop-transcription` — speech transcription lifecycle
 - `get-transcription-text` / `clear-transcription-text` — read/clear accumulated text
 - `getMobileServerInfo` — mobile server status, URLs, token, client count
+- `list-models` — fetch the model list from any OpenAI-compatible provider
+- `get-update-status` / `check-update` / `install-update` — auto-update lifecycle
 
 **Main → Renderer (send):**
 - `sync-app-state` — push state changes (e.g., mouse ignore toggle)
@@ -164,6 +172,11 @@ Optional mode that mirrors the solution stream to a phone browser over the LAN:
 - `toggle-transcription` — trigger start/stop transcription from shortcut
 - `transcription-text` / `transcription-error` / `transcription-stopped` / `transcription-cleared` — transcription events
 - `mobile-server-status` — mobile server start/stop/error/client-count updates
+- `switch-prompt-scene` / `switch-provider-profile` — cycle scene / provider profile shortcuts
+- `interview-assistant-audio` — start/stop capture for the interview assistant
+- `assistant-question` / `assistant-answer-chunk` / `assistant-answer-complete` / `assistant-answer-error` / `assistant-listening` / `assistant-state` — real-time interview assistant events
+- `thinking-state` / `double-click-state` — phone-toggled helper states mirrored back
+- `update-status` — auto-update progress (checking/downloading/downloaded/error)
 
 ### Zustand Stores
 
