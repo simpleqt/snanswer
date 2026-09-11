@@ -107,6 +107,9 @@ interface Settings {
   /** Deep-thinking flag (synced to main, read by ai.ts at request time) */
   enableThinking: boolean
 
+  /** Thinking intensity when enabled; mapped per provider */
+  thinkingEffort: 'low' | 'medium' | 'high'
+
   /** Saved provider profiles for one-key switching (URL/Key/model/thinking) */
   providerProfiles: ProviderProfile[]
   activeProviderId: string
@@ -122,6 +125,7 @@ export interface ProviderProfile {
   apiKey: string
   model: string
   enableThinking: boolean
+  thinkingEffort: 'low' | 'medium' | 'high'
 }
 
 function providerNameFromURL(url: string): string {
@@ -186,6 +190,8 @@ const defaultSettings: Settings = {
   clickCaptureMode: 'off',
 
   enableThinking: false,
+
+  thinkingEffort: 'medium',
 
   providerProfiles: [],
   activeProviderId: '',
@@ -263,7 +269,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiBaseURL: profile.apiBaseURL,
           apiKey: profile.apiKey,
           model: profile.model,
-          enableThinking: profile.enableThinking
+          enableThinking: profile.enableThinking,
+          thinkingEffort: profile.thinkingEffort ?? 'medium'
         })
         return profile
       },
@@ -276,7 +283,8 @@ export const useSettingsStore = create<SettingsStore>()(
           apiBaseURL: s.apiBaseURL,
           apiKey: s.apiKey,
           model: s.model,
-          enableThinking: s.enableThinking
+          enableThinking: s.enableThinking,
+          thinkingEffort: s.thinkingEffort
         }
         set((state) => ({
           providerProfiles: existing

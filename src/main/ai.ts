@@ -67,26 +67,45 @@ function createOpenAIProvider() {
           }
         }
 
-        // kimi/kimi-k3 (DashScope) only allows temperature=0.6.
-        // Check the MODEL NAME in the request body (always reliable)
-        // rather than the base URL, which may be set via UI.
-        if (isKimi || isDashScope) {
-          // Remove temperature entirely so the API uses its default (0.6).
-          // Setting it to 0.6 explicitly also works, but removing avoids
-          // any floating-point / serialization edge cases.
+        // Thinking control per provider. DeepSeek thinks by DEFAULT (high
+        // effort) and streams reasoning only via reasoning_content — which
+        // the text-only stream never surfaces — so without an explicit
+        // `thinking: disabled` the UI shows nothing for minutes.
+        const thinkingOn = settings.enableThinking
+        const effort = settings.thinkingEffort
+        if (isDeepSeek) {
+          // OpenAI-compat param; effort values are low/high/max
+          body.thinking = { type: thinkingOn ? 'enabled' : 'disabled' }
+          if (thinkingOn) {
+            body.reasoning_effort = effort === 'low' ? 'low' : effort === 'high' ? 'max' : 'high'
+          }
+        } else if (String(url).includes('bigmodel')) {
+          // Zhipu GLM-4.5+: same object shape, enabled/disabled only
+          body.thinking = { type: thinkingOn ? 'enabled' : 'disabled' }
+        } else if (String(url).includes('api.openai.com')) {
+          if (thinkingOn) {
+            body.reasoning_effort = effort
+          }
+        } else if (String(url).includes('openrouter.ai')) {
+          if (thinkingOn) {
+            body.reasoning = { effort }
+          }
+        } else if (isKimi || isDashScope) {
+          // kimi/kimi-k3 (DashScope) only allows temperature=0.6.
+          // Check the MODEL NAME in the request body (always reliable)
+          // rather than the base URL, which may be set via UI.
           delete body.temperature
           delete body.top_p
           delete body.top_k
           delete body.frequency_penalty
           delete body.presence_penalty
-          body.enable_thinking = settings.enableThinking
-        } else if (!isDeepSeek) {
-          // chat_template_kwargs is a vLLM-only extension; hosted providers
-          // like DeepSeek reject unknown fields, so inject it elsewhere only
+          body.enable_thinking = thinkingOn
+        } else {
+          // Self-hosted vLLM-style deployments
           body.extra_body = {
             ...(body.extra_body || {}),
             chat_template_kwargs: {
-              enable_thinking: settings.enableThinking
+              enable_thinking: thinkingOn
             }
           }
         }

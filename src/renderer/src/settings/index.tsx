@@ -132,6 +132,7 @@ export default function SettingsPage() {
     interviewAssistantEnabled,
     clickCaptureMode,
     enableThinking,
+    thinkingEffort,
     providerProfiles,
     activeProviderId,
     autoUpdateEnabled,
@@ -388,14 +389,34 @@ export default function SettingsPage() {
               <label className="text-sm font-medium">
                 深度思考
                 <span className="ml-2 text-xs font-light">
-                  开启后模型先推理再作答（更慢更准），会随配置方案一起保存
+                  开启后模型先推理再作答（更慢更准），会随配置方案一起保存；DeepSeek
+                  默认开启思考，此处关闭后会显式禁用
                 </span>
               </label>
-              <Switch
-                className="scale-y-90"
-                checked={enableThinking}
-                onCheckedChange={(checked) => updateSetting('enableThinking', checked)}
-              />
+              <div className="flex items-center gap-2">
+                {enableThinking && (
+                  <Select
+                    value={thinkingEffort}
+                    onValueChange={(val) =>
+                      updateSetting('thinkingEffort', val as typeof thinkingEffort)
+                    }
+                  >
+                    <SelectTrigger className="w-24 bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">低</SelectItem>
+                      <SelectItem value="medium">中</SelectItem>
+                      <SelectItem value="high">高</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                <Switch
+                  className="scale-y-90"
+                  checked={enableThinking}
+                  onCheckedChange={(checked) => updateSetting('enableThinking', checked)}
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between">

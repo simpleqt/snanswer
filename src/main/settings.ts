@@ -65,6 +65,8 @@ export const settings = {
   mobilePairingToken: '',
   /** Session-level thinking toggle (phone 「深度思考」), read by ai.ts at request time */
   enableThinking: false,
+  /** Thinking intensity when enabled; mapped per provider in ai.ts */
+  thinkingEffort: 'medium' as ThinkingEffort,
   /** Real-time interview assistant: auto-answer detected interviewer questions */
   interviewAssistantEnabled: false,
   /** Global left-button click capture mode */
@@ -76,3 +78,5 @@ export const settings = {
 export type AppSettings = typeof settings
 
 export type ClickCaptureMode = 'off' | 'single' | 'double'
+
+export type ThinkingEffort = 'low' | 'medium' | 'high'
