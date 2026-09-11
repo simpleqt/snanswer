@@ -50,57 +50,83 @@ import {
 type MobileServerInfo = Awaited<ReturnType<typeof window.api.getMobileServerInfo>>
 
 /** Built-in OpenAI-compatible provider presets (model = recommended vision model) */
-const PROVIDER_PRESETS = [
+interface ProviderPreset {
+  id: string
+  name: string
+  url: string
+  model: string
+  note: string
+  /** Recommended thinking defaults applied when the preset is selected */
+  thinking: { enabled: boolean; effort?: 'low' | 'medium' | 'high' }
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'deepseek',
     name: 'DeepSeek',
     url: 'https://api.deepseek.com',
-    model: 'deepseek-v4-flash-vision-exp',
-    note: '视觉模型为 deepseek-v4-flash-vision-exp，其他模型传图会报错'
+    model: 'deepseek-flash',
+    note: 'deepseek-flash（视觉+思考，旧名 deepseek-v4-flash-vision-exp 仍兼容）',
+    // DeepSeek thinks by DEFAULT at high effort (long silent reasoning_content);
+    // selecting the preset turns it off for snappy answers — enable + 强度 on demand
+    thinking: { enabled: false }
   },
   {
     id: 'siliconflow',
     name: '硅基流动',
     url: 'https://api.siliconflow.cn/v1',
     model: 'Qwen/Qwen3-VL-32B-Instruct',
-    note: '国内平台，支持支付宝付款'
+    note: '国内平台，支持支付宝付款',
+    thinking: { enabled: false }
   },
   {
     id: 'dashscope',
     name: '阿里百炼',
     url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-vl-max',
-    note: '通义系列，语音转录也用此平台 Key'
+    note: '通义系列，语音转录也用此平台 Key',
+    thinking: { enabled: false }
   },
   {
     id: 'zhipu',
     name: '智谱 GLM',
     url: 'https://open.bigmodel.cn/api/paas/v4',
     model: 'glm-4.5v',
-    note: 'GLM 系列视觉模型'
+    note: 'GLM-4.5V 视觉模型，支持 thinking 开关',
+    thinking: { enabled: false }
   },
   {
     id: 'moonshot',
     name: '月之暗面 Kimi',
     url: 'https://api.moonshot.cn/v1',
-    model: 'moonshot-v1-8k-vision-preview',
-    note: 'Kimi 视觉预览模型'
+    model: 'kimi-k3',
+    note: 'Kimi K3 旗舰（视觉 + 1M 上下文）',
+    thinking: { enabled: false }
   },
   {
     id: 'openrouter',
     name: 'OpenRouter',
     url: 'https://openrouter.ai/api/v1',
     model: 'gpt-5-mini',
-    note: '海外聚合平台'
+    note: '海外聚合平台，思考强度走 reasoning.effort',
+    thinking: { enabled: false }
   },
   {
     id: 'openai',
     name: 'OpenAI',
     url: 'https://api.openai.com/v1',
     model: 'gpt-5-mini',
-    note: '官方 API'
+    note: '官方 API，思考强度走 reasoning_effort',
+    thinking: { enabled: false }
   },
-  { id: 'custom', name: '自定义（OpenAI 兼容）', url: '', model: '', note: '手动填写任意兼容地址' }
+  {
+    id: 'custom',
+    name: '自定义（OpenAI 兼容）',
+    url: '',
+    model: '',
+    note: '手动填写任意兼容地址',
+    thinking: { enabled: false }
+  }
 ]
 
 const MOBILE_TOKEN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
@@ -434,6 +460,12 @@ export default function SettingsPage() {
                     if (preset.model) {
                       updateSetting('model', preset.model)
                     }
+                    // Apply the preset's recommended thinking defaults
+                    updateSetting('enableThinking', preset.thinking.enabled)
+                    if (preset.thinking.effort) {
+                      updateSetting('thinkingEffort', preset.thinking.effort)
+                    }
+                    toast.info(`已切换到 ${preset.name}：${preset.model}`)
                   }
                 }}
               >
