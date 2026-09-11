@@ -1,6 +1,24 @@
 import { streamText, generateText, type ModelMessage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { fetch as undiciFetch, Agent } from 'undici'
 import { settings, AppSettings } from './settings'
+
+// Dedicated HTTP agent for LLM streaming: Node's global fetch (undici)
+// kills a connection after 300s without body data by default, which cuts
+// off deep-thinking models that stay silent for minutes before the first
+// token. Disable the body idle timeout entirely and allow 10min to first byte.
+const llmAgent = new Agent({
+  headersTimeout: 10 * 60 * 1000,
+  bodyTimeout: 0
+})
+
+function llmFetch(url: string, options?: RequestInit): Promise<Response> {
+  const init = {
+    ...(options ?? {}),
+    dispatcher: llmAgent
+  } as unknown as Parameters<typeof undiciFetch>[1]
+  return undiciFetch(url, init) as unknown as Promise<Response>
+}
 
 // The system prompt is fully managed by the renderer (prompt scenes in the
 // settings store) and synced here via updateAppSettings on app startup
@@ -29,7 +47,7 @@ function createOpenAIProvider() {
     baseURL: settings.apiBaseURL,
     apiKey: settings.apiKey,
     fetch: async (url, options) => {
-      if (!options?.body) return fetch(url, options)
+      if (!options?.body) return llmFetch(url, options)
 
       try {
         const body = JSON.parse(options.body as string)
@@ -75,13 +93,13 @@ function createOpenAIProvider() {
 
         console.log('[AI Request] AFTER  =>', JSON.stringify(body))
 
-        return fetch(url, {
+        return llmFetch(url, {
           ...options,
           body: JSON.stringify(body)
         })
       } catch (e) {
         console.error('[AI Request] Failed to parse/modify body:', e)
-        return fetch(url, options)
+        return llmFetch(url, options)
       }
     }
   })
