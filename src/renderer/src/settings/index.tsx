@@ -534,7 +534,8 @@ export default function SettingsPage() {
               <label className="text-sm font-medium">
                 最大输出长度
                 <span className="ml-2 text-xs font-light">
-                  答案被截断时调高（受模型上限约束，DeepSeek 上限 8K）
+                  答案被截断时调高；开启思考时推理也计入此预算（DeepSeek 思考模式最低自动放宽到
+                  32K，上限 384K）
                 </span>
               </label>
               <input

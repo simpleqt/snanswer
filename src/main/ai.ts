@@ -63,10 +63,13 @@ function createOpenAIProvider() {
         console.log('[AI Request] BEFORE =>', JSON.stringify(body))
 
         if (isDeepSeek) {
-          // DeepSeek caps output tokens at 8k; our 100k budget would 400
-          if (typeof body.max_tokens === 'number' && body.max_tokens > 8192) {
-            body.max_tokens = 8192
-          }
+          // DeepSeek max_tokens (1-384K) covers reasoning + answer together;
+          // thinking mode defaults to a 64K budget by itself. An 8K budget
+          // cuts long reasoning mid-thought (finish_reason=length), so keep a
+          // higher floor while thinking and clamp only at the API maximum.
+          const current = typeof body.max_tokens === 'number' ? body.max_tokens : 8192
+          const floor = settings.enableThinking ? 32768 : 8192
+          body.max_tokens = Math.min(Math.max(current, floor), 384000)
         }
 
         // Thinking control per provider. DeepSeek thinks by DEFAULT (high
