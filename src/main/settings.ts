@@ -67,6 +67,8 @@ export const settings = {
   enableThinking: false,
   /** Thinking intensity when enabled; mapped per provider in ai.ts */
   thinkingEffort: 'medium' as ThinkingEffort,
+  /** Max output tokens for solution streams; providers cap this per model */
+  maxOutputTokens: 8192,
   /** Real-time interview assistant: auto-answer detected interviewer questions */
   interviewAssistantEnabled: false,
   /** Global left-button click capture mode */

@@ -27,10 +27,12 @@ function getSystemPrompt(extra?: string) {
   return [basePrompt, extra].filter(Boolean).join('\n\n') || undefined
 }
 
-// Large output budget so long coding answers (full code + alternatives) are
-// not truncated mid-stream. Some models cap this value; keep it high but
-// within the context window of the configured model (Kimi-K2.6: 128k).
-const MAX_OUTPUT_TOKENS = 100000
+/** Output budget from settings; providers cap this per model (see UI hint) */
+function getMaxOutputTokens(): number {
+  const value = Math.trunc(settings.maxOutputTokens)
+  if (!Number.isFinite(value) || value < 256) return 8192
+  return Math.min(value, 128000)
+}
 
 function getModel(_settings: AppSettings) {
   const fallbackModel = settings.apiBaseURL.includes('siliconflow')
@@ -195,7 +197,7 @@ export function getSolutionStream(messages: ModelMessage[], abortSignal?: AbortS
 
   const { textStream } = streamText({
     model: openai.chat(modelName),
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxOutputTokens: getMaxOutputTokens(),
     // temperature omitted: kimi/kimi-k3 only allows 0.6 (its default);
     // let each provider use its own default to avoid API rejection.
     // If we included system in messages, don't pass it here
@@ -241,7 +243,7 @@ export function getFollowUpStream(
 
   const { textStream } = streamText({
     model: openai.chat(modelName),
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxOutputTokens: getMaxOutputTokens(),
     system: isDashScope ? undefined : systemPrompt,
     messages: finalMessages,
     abortSignal,
@@ -268,7 +270,7 @@ export function getGeneralStream(messages: ModelMessage[], abortSignal?: AbortSi
 
   const { textStream } = streamText({
     model: openai.chat(modelName),
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxOutputTokens: getMaxOutputTokens(),
     system: isDashScope ? undefined : systemPrompt,
     messages: finalMessages,
     abortSignal,

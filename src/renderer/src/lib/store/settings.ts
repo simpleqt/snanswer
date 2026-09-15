@@ -110,6 +110,9 @@ interface Settings {
   /** Thinking intensity when enabled; mapped per provider */
   thinkingEffort: 'low' | 'medium' | 'high'
 
+  /** Max output tokens for solution streams (provider-capped per model) */
+  maxOutputTokens: number
+
   /** Saved provider profiles for one-key switching (URL/Key/model/thinking) */
   providerProfiles: ProviderProfile[]
   activeProviderId: string
@@ -192,6 +195,8 @@ const defaultSettings: Settings = {
   enableThinking: false,
 
   thinkingEffort: 'medium',
+
+  maxOutputTokens: 8192,
 
   providerProfiles: [],
   activeProviderId: '',

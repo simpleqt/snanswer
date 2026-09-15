@@ -144,6 +144,7 @@ export default function SettingsPage() {
     apiBaseURL,
     apiKey,
     model,
+    maxOutputTokens,
     scenes,
     activeSceneId,
     screenshotAutoSave,
@@ -527,6 +528,29 @@ export default function SettingsPage() {
                 </span>
               </label>
               <SelectModel value={model} onChange={(val) => updateSetting('model', val)} />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">
+                最大输出长度
+                <span className="ml-2 text-xs font-light">
+                  答案被截断时调高（受模型上限约束，DeepSeek 上限 8K）
+                </span>
+              </label>
+              <input
+                type="number"
+                min={1024}
+                max={128000}
+                step={1024}
+                value={maxOutputTokens}
+                onChange={(e) => {
+                  const value = Number(e.target.value)
+                  if (Number.isInteger(value) && value >= 1024 && value <= 128000) {
+                    updateSetting('maxOutputTokens', value)
+                  }
+                }}
+                className="w-60 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
         </div>
