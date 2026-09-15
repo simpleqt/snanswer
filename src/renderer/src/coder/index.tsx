@@ -4,7 +4,7 @@ import { useSettingsStore } from '@/lib/store/settings'
 import { useAppStore } from '@/lib/store/app'
 import { useTranscriptionStore } from '@/lib/store/transcription'
 import { useSolutionStore } from '@/lib/store/solution'
-import { startAudioCapture, stopAudioCapture } from '@/lib/audio-capture'
+import { startAudioCapture, stopAudioCapture, getAudioCaptureOwner } from '@/lib/audio-capture'
 
 import { AppHeader } from './AppHeader'
 import { AppContent } from './AppContent'
@@ -66,7 +66,7 @@ export default function CoderPage() {
           return
         }
         try {
-          const mode = await startAudioCapture()
+          const mode = await startAudioCapture('user')
           await window.api.startTranscription(dashscopeApiKey)
           setIsTranscribing(true)
           setErrorMessage(null)
@@ -122,7 +122,6 @@ export default function CoderPage() {
 
   // Interview assistant audio lifecycle: the main process tells us when the
   // assistant turns on/off; we own the actual getDisplayMedia capture
-  const assistantStartedCapture = useRef(false)
   const handleAssistantAudio = useRef<(active: boolean) => void>(() => {})
   useEffect(() => {
     const handler = async (active: boolean) => {
@@ -134,10 +133,9 @@ export default function CoderPage() {
           return
         }
         try {
-          const mode = await startAudioCapture()
+          const mode = await startAudioCapture('assistant')
           await window.api.startTranscription(dashscopeApiKey)
           transcription.setIsTranscribing(true)
-          assistantStartedCapture.current = true
           if (mode === 'microphone') {
             toast.info('macOS 不支持捕获系统声音，实时助手正在使用麦克风收音')
           }
@@ -146,8 +144,9 @@ export default function CoderPage() {
           stopAudioCapture()
           setErrorMessage('启动实时助手失败，请检查系统音频权限')
         }
-      } else if (assistantStartedCapture.current) {
-        assistantStartedCapture.current = false
+      } else if (getAudioCaptureOwner() === 'assistant') {
+        // Only stop what the assistant started; a user-started manual
+        // transcription (Alt+T) must survive the assistant being toggled off
         stopAudioCapture()
         await window.api.stopTranscription()
         useTranscriptionStore.getState().setIsTranscribing(false)
@@ -161,14 +160,20 @@ export default function CoderPage() {
     }
   }, [dashscopeApiKey, setErrorMessage])
 
-  // The main-process "start capture" event fires when the switch is toggled —
-  // but if that happens while this page is unmounted (e.g. enabled from the
-  // settings page) nobody receives it. Catch up on mount so capture actually
-  // starts when the user returns to the coder page.
+  // The main-process start/stop events fire when the switch is toggled — but
+  // if that happens while this page is unmounted (e.g. toggled from the
+  // settings page) nobody receives them. Catch up on mount in both
+  // directions: start capture when enabled, stop the assistant-owned capture
+  // that outlived a disable-while-unmounted.
   const interviewAssistantEnabled = useSettingsStore((s) => s.interviewAssistantEnabled)
   useEffect(() => {
     if (interviewAssistantEnabled) {
       handleAssistantAudio.current(true)
+    } else if (
+      useTranscriptionStore.getState().isTranscribing &&
+      getAudioCaptureOwner() === 'assistant'
+    ) {
+      handleAssistantAudio.current(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
