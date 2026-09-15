@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai'
+import { systemPreferences } from 'electron'
 import { getInterviewAnswerStream, compressInterviewHistory } from './ai'
 import { settings, registerSettingsChangeHook } from './settings'
 import { onTranscriptionSentence, onTranscriptionActive } from './transcription'
@@ -233,10 +234,26 @@ function applyAssistantState() {
   }
   if (enabled) {
     startDetector()
+    if (process.platform === 'darwin') {
+      // Force the macOS TCC microphone prompt up front; without an explicit
+      // request the app never appears in System Settings → Microphone and
+      // getUserMedia fails silently for the user
+      try {
+        const granted = systemPreferences.askForMediaAccess('microphone')
+        if (granted instanceof Promise) {
+          granted.then((ok) => console.log('[assistant] mic access:', ok)).catch(() => {})
+        } else {
+          console.log('[assistant] mic access:', granted)
+        }
+      } catch (error) {
+        console.error('[assistant] mic access check failed:', error)
+      }
+    }
   }
   // Renderer owns audio capture (getDisplayMedia); it starts/stops accordingly
   sendToRenderer('interview-assistant-audio', enabled)
   broadcastToMobile('assistant-state', { enabled })
+  console.log('[assistant] state:', enabled ? 'enabled' : 'disabled')
 }
 
 export function toggleInterviewAssistant(): void {
