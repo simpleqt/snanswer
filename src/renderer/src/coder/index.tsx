@@ -123,8 +123,9 @@ export default function CoderPage() {
   // Interview assistant audio lifecycle: the main process tells us when the
   // assistant turns on/off; we own the actual getDisplayMedia capture
   const assistantStartedCapture = useRef(false)
+  const handleAssistantAudio = useRef<(active: boolean) => void>(() => {})
   useEffect(() => {
-    const handleAssistantAudio = async (active: boolean) => {
+    const handler = async (active: boolean) => {
       const transcription = useTranscriptionStore.getState()
       if (active) {
         if (transcription.isTranscribing) return
@@ -152,11 +153,25 @@ export default function CoderPage() {
         useTranscriptionStore.getState().setIsTranscribing(false)
       }
     }
-    window.api.onInterviewAssistantAudio(handleAssistantAudio)
+    handleAssistantAudio.current = handler
+    window.api.onInterviewAssistantAudio(handler)
     return () => {
+      handleAssistantAudio.current = () => {}
       window.api.removeInterviewAssistantAudioListener()
     }
   }, [dashscopeApiKey, setErrorMessage])
+
+  // The main-process "start capture" event fires when the switch is toggled —
+  // but if that happens while this page is unmounted (e.g. enabled from the
+  // settings page) nobody receives it. Catch up on mount so capture actually
+  // starts when the user returns to the coder page.
+  const interviewAssistantEnabled = useSettingsStore((s) => s.interviewAssistantEnabled)
+  useEffect(() => {
+    if (interviewAssistantEnabled) {
+      handleAssistantAudio.current(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="relative h-screen">
