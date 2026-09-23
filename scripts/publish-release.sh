@@ -81,4 +81,4 @@ if [ -z "$REMOTE_EXE_SIZE" ] || [ "$REMOTE_YML_SIZE" != "$REMOTE_EXE_SIZE" ]; th
   exit 1
 fi
 echo "✅ 远端一致（exe $REMOTE_EXE_SIZE 字节），自动更新校验将通过"
-echo "完成：https://github.com/$REPO/releases/tag/$TAG（记得补全 Release 描述）"
+echo "完成：https://github.com/$REPO/releases/tag/${TAG}（记得补全 Release 描述）"
