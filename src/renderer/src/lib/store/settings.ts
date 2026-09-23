@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import aiInterviewPrompt from './prompts/ai-interview.md?raw'
 import codingPrompt from './prompts/coding.md?raw'
 import englishExamPrompt from './prompts/english-exam.md?raw'
 import generalQaPrompt from './prompts/general-qa.md?raw'
@@ -17,6 +18,7 @@ export const CODING_SCENE_ID = 'coding'
 
 /** Default prompts for all preset scenes, maintained as Markdown files under ./prompts */
 export const PRESET_SCENE_PROMPTS: Record<string, string> = {
+  'ai-interview': aiInterviewPrompt,
   [CODING_SCENE_ID]: codingPrompt,
   'english-exam': englishExamPrompt,
   'general-qa': generalQaPrompt,
@@ -25,6 +27,12 @@ export const PRESET_SCENE_PROMPTS: Record<string, string> = {
 }
 
 const createPresetScenes = (): PromptScene[] => [
+  {
+    id: 'ai-interview',
+    name: 'AI 面试',
+    prompt: PRESET_SCENE_PROMPTS['ai-interview'],
+    isPreset: true
+  },
   {
     id: CODING_SCENE_ID,
     name: '解算法题',
