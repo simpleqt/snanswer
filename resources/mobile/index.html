@@ -688,8 +688,12 @@
             if (assistantOn) {
               var bar = $('listen-bar')
               bar.hidden = false
-              var t = (payload && payload.text) || ''
-              $('listen-text').textContent = t || '正在收听面试官说话…'
+              if (payload && payload.muted) {
+                $('listen-text').textContent = '🎤 检测到你正在作答，暂停识别新问题…'
+              } else {
+                var t = (payload && payload.text) || ''
+                $('listen-text').textContent = t || '正在收听面试官说话…'
+              }
               if (!userScrolled) {
                 content.scrollTop = content.scrollHeight
               }

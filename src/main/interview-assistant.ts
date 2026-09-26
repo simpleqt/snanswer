@@ -11,6 +11,12 @@ import type { InterviewQAItem } from './mobile-types'
  * the interviewer finishes asking a question (silence + question markers),
  * then streams a suggested answer to the desktop overlay and phones without
  * any manual shortcut. New questions silently abort superseded answers.
+ *
+ * The audio feed hears both sides of the conversation. After each answer the
+ * detector mutes itself for the time the candidate needs to read the answer
+ * aloud, so the candidate's own speech can neither swallow the interviewer's
+ * next question nor fire bogus triggers on itself; question-shaped sentences
+ * still break through in case the interviewer interjects mid-answer.
  */
 
 const ASSISTANT_PROMPT = `你是一位资深面试教练，实时为候选人提供应答支持。
@@ -38,11 +44,36 @@ const PENDING_CAP = 200 // keep only the tail of very long monologues
 const FILLER_RE =
   /^(好的|好嘞|嗯+|哦+|噢+|额+|呃+|对|是的|没错|没问题|可以|行|ok|okay|嗯嗯|收到|明白|了解|谢谢|感谢|辛苦了|不好意思)[。.，,！!？?~\s]*$/i
 
+// --- Candidate-answer suppression ---
+// The mic hears BOTH sides: after we stream an answer the candidate reads it
+// aloud, and their own spoken answer used to flood the question buffer —
+// swallowing the interviewer's next question and later firing a bogus
+// incoherent trigger on the candidate's words. Suppress listening for the
+// estimated read-aloud time; sentences that still look like questions pass
+// through (the interviewer may interject a follow-up at any moment).
+const ANSWER_READ_CHARS_PER_SEC = 4.5 // Mandarin read-aloud pace
+const SUPPRESS_MIN_MS = 4000
+const SUPPRESS_MAX_MS = 90000
+
+// Interviewers often ask without any 吗/？ ending ("介绍一下你的项目",
+// "讲讲缓存一致性"). These sentence-opening stems count as questions too.
+const QUESTION_STEM_RE =
+  /^(?:先|请|麻烦|那|那么|然后|接下来|具体|再|顺便)?(?:你|您)?(?:介绍(?:一|几)?下|讲(?:一)?下|讲讲|说(?:一)?下|说说|谈谈|聊聊|描述(?:一)?下|解释(?:一)?下|对比(?:一)?下|分析(?:一)?下|举例(?:子|说明)?|分享(?:一)?下|评价(?:一)?下|怎么|如何|为什么|是什么|什么是|有哪些|哪个|哪种|有没有|是否|能不能|会不会|可不可以|多少)/
+
+// While suppressed, an interrogative ANYWHERE in the sentence is enough to
+// break through ("你说说……是怎么保证的。") — follow-ups during the
+// candidate's read-aloud must not be swallowed by the mute window
+const INTERROGATIVE_RE =
+  /[？?吗呢嘛]|怎么|如何|为什么|怎么样|怎么办|哪些|哪种|哪个|多少|有没有|能不能|会不会|可不可以|是否/
+
 // --- State ---
+type PendingSentence = { text: string; questionish: boolean }
 let detectorTimer: NodeJS.Timeout | null = null
-let pendingText = ''
+let pending: PendingSentence[] = []
+let pendingChars = 0
 let lastSpeechTime = 0
 let lastTriggerTime = 0
+let suppressUntil = 0
 
 let qaItems: InterviewQAItem[] = []
 let nextQaId = 1
@@ -68,49 +99,106 @@ function stripNoise(text: string): string {
   return text.replace(/[\s。，,.、；;！!？?~…"'"「」]/g, '')
 }
 
-function isQuestionish(text: string): boolean {
-  return /[？?]\s*[。.]?\s*$/.test(text) || /[吗呢]\s*[。.？?，,]?\s*$/.test(text)
+/** A single finalized sentence counts as a question via ending marker or stem */
+function sentenceIsQuestionish(text: string): boolean {
+  const trimmed = text.trim()
+  if (/[？?]\s*[。.]?\s*$/.test(trimmed)) return true
+  if (/[吗呢嘛]\s*[。.，,！!？?]?\s*$/.test(trimmed)) return true
+  return QUESTION_STEM_RE.test(trimmed)
+}
+
+/**
+ * Suppress-window breakthrough: looser than normal classification because a
+ * follow-up swallowed here would be lost entirely (regular speech resumes
+ * only after the window expires with a clean buffer).
+ */
+function breaksSuppression(text: string): boolean {
+  return sentenceIsQuestionish(text) || INTERROGATIVE_RE.test(text)
+}
+
+function pendingText(): string {
+  return pending.map((s) => s.text).join('')
+}
+
+function clearPending(): void {
+  pending = []
+  pendingChars = 0
+}
+
+function pushPending(text: string, questionish: boolean): void {
+  pending.push({ text, questionish })
+  pendingChars += text.length
+  while (pendingChars > PENDING_CAP && pending.length > 1) {
+    pendingChars -= pending[0].text.length
+    pending.shift()
+  }
+}
+
+function isSuppressing(): boolean {
+  return suppressUntil > Date.now()
+}
+
+function startSuppression(answer: string): void {
+  const readMs = (answer.length / ANSWER_READ_CHARS_PER_SEC) * 1000
+  suppressUntil = Date.now() + Math.min(Math.max(readMs, SUPPRESS_MIN_MS), SUPPRESS_MAX_MS)
 }
 
 function handleSentence(text: string, sentenceEnd: boolean) {
   if (!settings.interviewAssistantEnabled || !text) return
   lastSpeechTime = Date.now()
-  if (sentenceEnd) {
-    pendingText = (pendingText + text).slice(-PENDING_CAP)
-    emit('assistant-listening', { text: pendingText })
-  } else {
+  if (!sentenceEnd) {
     // Partials stream live so both ends show what is being heard right now
     emit('assistant-listening', {
-      text: (pendingText + text).slice(-PENDING_CAP),
-      partial: true
+      text: (pendingText() + text).slice(-PENDING_CAP),
+      partial: true,
+      muted: isSuppressing()
     })
-  }
-}
-
-function maybeTrigger() {
-  if (!settings.interviewAssistantEnabled || !pendingText) return
-
-  const candidate = pendingText.trim()
-  if (!candidate) {
-    pendingText = ''
     return
   }
 
-  const questionish = isQuestionish(candidate)
+  const trimmed = text.trim()
+  if (!trimmed) return
+
+  if (isSuppressing()) {
+    if (!breaksSuppression(trimmed)) {
+      // Presumed the candidate reading our answer aloud: swallow it so it
+      // cannot pollute the question buffer, and tell the UI why it's quiet
+      emit('assistant-listening', { text: '', muted: true })
+      return
+    }
+    // Looks like the interviewer interjecting a follow-up mid-answer
+    clearPending()
+  }
+
+  const stripped = stripNoise(trimmed)
+  // Standalone fillers ("嗯", "好的") must not be appended after a real
+  // question — they used to destroy the questionish ending and push the
+  // buffer into the slow cooldown path
+  if (stripped.length < 2 || FILLER_RE.test(stripped)) return
+
+  pushPending(trimmed, sentenceIsQuestionish(trimmed) || isSuppressing())
+  emit('assistant-listening', { text: pendingText().slice(-PENDING_CAP) })
+}
+
+function maybeTrigger() {
+  if (!settings.interviewAssistantEnabled || pending.length === 0) return
+
+  const questionish = pending[pending.length - 1].questionish
   const idleFor = Date.now() - lastSpeechTime
   const threshold = questionish ? QUESTION_SILENCE_TRIGGER_MS : SILENCE_TRIGGER_MS
   if (idleFor < threshold) return
 
+  const candidate = pendingText()
   const stripped = stripNoise(candidate)
   if (stripped.length < MIN_TEXT_LENGTH || FILLER_RE.test(stripped)) {
-    pendingText = '' // small talk / noise: drop and keep listening
+    clearPending() // small talk / noise: drop and keep listening
     return
   }
   if (!questionish && Date.now() - lastTriggerTime < NO_QUESTION_COOLDOWN_MS) {
     return // likely a mid-explanation pause: keep accumulating
   }
 
-  pendingText = ''
+  clearPending()
   lastTriggerTime = Date.now()
   emit('assistant-listening', { text: '' }) // clear the live caption bar
   void triggerAnswer(candidate)
@@ -168,6 +256,9 @@ async function triggerAnswer(question: string) {
     if (!controller.signal.aborted) {
       item.answer = answer
       item.complete = true
+      // The candidate will now read this answer aloud; mute the detector
+      // for the estimated speaking time so their own voice is ignored
+      startSuppression(answer)
       emit('assistant-answer-complete', { id })
       scheduleCompression()
     }
@@ -211,10 +302,20 @@ function scheduleCompression() {
 
 // --- Lifecycle ---
 
+function detectorTick() {
+  if (suppressUntil && Date.now() >= suppressUntil) {
+    suppressUntil = 0
+    if (settings.interviewAssistantEnabled) {
+      emit('assistant-listening', { text: '' }) // unmute the caption bar
+    }
+  }
+  maybeTrigger()
+}
+
 function startDetector() {
   if (detectorTimer) return
   lastSpeechTime = Date.now()
-  detectorTimer = setInterval(maybeTrigger, CHECK_INTERVAL_MS)
+  detectorTimer = setInterval(detectorTick, CHECK_INTERVAL_MS)
 }
 
 function stopDetector() {
@@ -226,7 +327,8 @@ function stopDetector() {
 
 function applyAssistantState() {
   const enabled = settings.interviewAssistantEnabled
-  pendingText = ''
+  clearPending()
+  suppressUntil = 0
   stopDetector()
   if (streamContext) {
     streamContext.controller.abort()
@@ -285,6 +387,6 @@ onTranscriptionSentence(handleSentence)
 // Paused listening (transcription stopped/failed): drop the pending fragment
 onTranscriptionActive((active) => {
   if (!active && settings.interviewAssistantEnabled) {
-    pendingText = ''
+    clearPending()
   }
 })

@@ -17,6 +17,7 @@ export function InterviewAssistantPanel() {
   const enabled = useSettingsStore((s) => s.interviewAssistantEnabled)
   const [items, setItems] = useState<QAItem[]>([])
   const [listeningText, setListeningText] = useState('')
+  const [listeningMuted, setListeningMuted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -40,8 +41,9 @@ export function InterviewAssistantPanel() {
         )
       )
     })
-    window.api.onAssistantListening(({ text }: { text: string }) => {
-      setListeningText(text)
+    window.api.onAssistantListening(({ text, muted }) => {
+      setListeningMuted(!!muted)
+      setListeningText(muted ? '' : text)
     })
     return () => {
       window.api.removeAssistantQuestionListener()
@@ -55,6 +57,7 @@ export function InterviewAssistantPanel() {
   useEffect(() => {
     if (!enabled) {
       setListeningText('')
+      setListeningMuted(false)
     }
   }, [enabled])
 
@@ -75,7 +78,11 @@ export function InterviewAssistantPanel() {
         {enabled && (
           <div className="flex items-center gap-1.5 text-xs text-gray-300/70 select-none min-h-4">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-            <span className="truncate">{listeningText || '正在收听面试官说话…'}</span>
+            <span className="truncate">
+              {listeningMuted
+                ? '🎤 检测到你正在作答，暂停识别新问题…'
+                : listeningText || '正在收听面试官说话…'}
+            </span>
           </div>
         )}
         {visible.map((item) => (

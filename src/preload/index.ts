@@ -277,7 +277,14 @@ const api = {
   removeAssistantStateListener: () => {
     ipcRenderer.removeAllListeners('assistant-state')
   },
-  onAssistantListening: (callback: (data: { text: string; partial?: boolean }) => void) => {
+  onAssistantListening: (
+    callback: (data: {
+      text: string
+      partial?: boolean
+      /** true while the detector is muted for the candidate's own answer */
+      muted?: boolean
+    }) => void
+  ) => {
     ipcRenderer.on('assistant-listening', (_event, data) => callback(data))
   },
   removeAssistantListeningListener: () => {
