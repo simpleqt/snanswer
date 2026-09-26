@@ -71,19 +71,15 @@ upload "$YML" "latest.yml"
 
 # 可选：把 Release 描述设置为发行说明文件内容（$1）
 if [ -n "${1:-}" ] && [ -f "$1" ]; then
-  python3 - "$1" "$RID" "$AUTH" "$REPO" <<'PYEOF'
-import json, sys, urllib.request
-notes, rid, auth, repo = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-body = open(notes, encoding="utf-8").read()
-req = urllib.request.Request(
-    f"https://api.github.com/repos/{repo}/releases/{rid}",
-    data=json.dumps({"body": body}).encode(),
-    headers={"Authorization": auth, "Accept": "application/vnd.github+json",
-             "Content-Type": "application/json"},
-    method="PATCH")
-with urllib.request.urlopen(req) as resp:
-    print("Release 描述已更新" if resp.status == 200 else f"更新描述失败: HTTP {resp.status}")
-PYEOF
+  # JSON 转义用本地 python3（不联网），上传走 curl（用系统证书，
+  # python.org 版 python3 的 urllib 常因缺 CA 证书握手失败）
+  python3 -c 'import json,sys; sys.stdout.write(json.dumps({"body": open(sys.argv[1], encoding="utf-8").read()}))' "$1" > /tmp/snanswer-release-body.json &&
+    curl -sS -X PATCH -H "$AUTH" -H "Accept: application/vnd.github+json" \
+      -H "Content-Type: application/json" \
+      "https://api.github.com/repos/$REPO/releases/$RID" \
+      --data-binary @/tmp/snanswer-release-body.json -o /dev/null &&
+    echo "Release 描述已更新" ||
+    echo "警告：更新 Release 描述失败，请手动补全"
 fi
 
 # 发布后自检：远端 latest.yml 的 size 必须等于远端 exe 实际大小
