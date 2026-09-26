@@ -34,9 +34,12 @@ jobs:
         run: npm ci
 
       - name: Package Electron app (verification build, no publish)
+        # npm scripts pass --publish never to electron-builder. Without the
+        # flag, a tag build auto-selects the "onTag" publish policy and then
+        # fails on the missing GH_TOKEN (the v1.9.4 CI failure). Note:
+        # electron-builder 25.x reads no EP_PUBLISH env var — the CLI flag is
+        # the only reliable switch.
         run: npm run build:${{ matrix.os == 'windows-latest' && 'win' || (matrix.os == 'macos-latest' && 'mac' || 'linux') }}
-        env:
-          EP_PUBLISH: never # never upload from CI, even on tag builds
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
