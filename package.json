@@ -1,6 +1,6 @@
 {
   "name": "snanswer",
-  "version": "1.9.4",
+  "version": "1.9.5",
   "description": "截屏解题助手，实时截屏并生成解题思路和答案",
   "main": "./out/main/index.js",
   "scripts": {

@@ -69,6 +69,23 @@ upload "$EXE" "$(basename "$EXE")"
 upload "$DMG" "$(basename "$DMG")"
 upload "$YML" "latest.yml"
 
+# 可选：把 Release 描述设置为发行说明文件内容（$1）
+if [ -n "${1:-}" ] && [ -f "$1" ]; then
+  python3 - "$1" "$RID" "$AUTH" "$REPO" <<'PYEOF'
+import json, sys, urllib.request
+notes, rid, auth, repo = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+body = open(notes, encoding="utf-8").read()
+req = urllib.request.Request(
+    f"https://api.github.com/repos/{repo}/releases/{rid}",
+    data=json.dumps({"body": body}).encode(),
+    headers={"Authorization": auth, "Accept": "application/vnd.github+json",
+             "Content-Type": "application/json"},
+    method="PATCH")
+with urllib.request.urlopen(req) as resp:
+    print("Release 描述已更新" if resp.status == 200 else f"更新描述失败: HTTP {resp.status}")
+PYEOF
+fi
+
 # 发布后自检：远端 latest.yml 的 size 必须等于远端 exe 实际大小
 echo "校验远端一致性…"
 sleep 5
