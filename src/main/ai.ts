@@ -41,6 +41,42 @@ function getModel(_settings: AppSettings) {
   return _settings.model || fallbackModel
 }
 
+/**
+ * Logging copy of a request body: inline image/file data is replaced with a
+ * size tag. Screenshots arrive as multi-MB base64 strings — dumping them to
+ * the console (twice per request) slows every request and buries useful info.
+ */
+function summarizeBodyForLog(body: Record<string, unknown>): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...body }
+  if (!Array.isArray(copy.messages)) return copy
+  copy.messages = (copy.messages as unknown[]).map((message) => {
+    if (
+      !message ||
+      typeof message !== 'object' ||
+      !Array.isArray((message as LooseMessage).content)
+    ) {
+      return message
+    }
+    return {
+      ...message,
+      content: ((message as LooseMessage).content as LooseContentPart[]).map((part) => {
+        if (!part || typeof part !== 'object') return part
+        const dataField =
+          typeof part.image === 'string'
+            ? 'image'
+            : typeof (part as { data?: unknown }).data === 'string'
+              ? 'data'
+              : null
+        if (!dataField) return part
+        const data = (part as Record<string, unknown>)[dataField] as string
+        if (data.length <= 100) return part
+        return { ...part, [dataField]: `[omitted ${Math.round(data.length / 1024)}KB]` }
+      })
+    }
+  })
+  return copy
+}
+
 function createOpenAIProvider() {
   const isDashScope =
     settings.apiBaseURL.includes('aliyuncs.com') || settings.apiBaseURL.includes('dashscope')
@@ -60,7 +96,7 @@ function createOpenAIProvider() {
         const isDeepSeek = String(url).includes('deepseek.com')
 
         console.log('[AI Request] URL:', String(url))
-        console.log('[AI Request] BEFORE =>', JSON.stringify(body))
+        console.log('[AI Request] BEFORE =>', JSON.stringify(summarizeBodyForLog(body)))
 
         if (isDeepSeek) {
           // DeepSeek max_tokens (1-384K) covers reasoning + answer together;
@@ -115,7 +151,7 @@ function createOpenAIProvider() {
           }
         }
 
-        console.log('[AI Request] AFTER  =>', JSON.stringify(body))
+        console.log('[AI Request] AFTER  =>', JSON.stringify(summarizeBodyForLog(body)))
 
         return llmFetch(url, {
           ...options,
