@@ -289,7 +289,13 @@ const callbacks: Record<string, () => void> = {
 
     abortCurrentStream('new-request')
     let loadingStarted = false
-    const screenshotData = await takeScreenshot()
+    // A blocked/hung capture now rejects with a user-facing message (issue #4);
+    // surface it instead of silently doing nothing.
+    const screenshotData = await takeScreenshot().catch((error) => {
+      console.error('Error taking screenshot:', error)
+      emitToClients('solution-error', extractErrorMessage(error))
+      return undefined
+    })
     if (screenshotData && mainWindow && !mainWindow.isDestroyed()) {
       saveScreenshotToDisk(screenshotData)
       const transcriptionText = getTranscriptionText()
@@ -407,7 +413,11 @@ const callbacks: Record<string, () => void> = {
     abortCurrentStream('new-request')
     let loadingStarted = false
 
-    const screenshotData = await takeScreenshot()
+    const screenshotData = await takeScreenshot().catch((error) => {
+      console.error('Error taking screenshot:', error)
+      emitToClients('solution-error', extractErrorMessage(error))
+      return undefined
+    })
     if (screenshotData && mainWindow && !mainWindow.isDestroyed()) {
       saveScreenshotToDisk(screenshotData)
       const transcriptionText = getTranscriptionText()

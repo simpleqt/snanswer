@@ -131,8 +131,14 @@ export function AppContent() {
             />
           </svg>
           <div className="flex-1 min-w-0">
-            <p className="text-red-400 font-medium text-sm">API 调用失败</p>
-            <p className="text-red-300/80 text-sm mt-0.5 break-words">{errorMessage}</p>
+            <p className="text-red-400 font-medium text-sm">
+              {errorMessage.startsWith('截屏失败') ? '截屏失败' : 'API 调用失败'}
+            </p>
+            <p className="text-red-300/80 text-sm mt-0.5 break-words">
+              {errorMessage.startsWith('截屏失败')
+                ? errorMessage.slice('截屏失败：'.length)
+                : errorMessage}
+            </p>
           </div>
           <button
             onClick={() => setErrorMessage(null)}

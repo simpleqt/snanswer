@@ -45,7 +45,7 @@ src/
 │   ├── global-mouse-hook.ts # Ref-counted uIOhook singleton shared by consumers
 │   ├── model-list.ts        # list-models IPC: fetch /models from any provider
 │   ├── tray.ts              # System tray (window recovery entry, win/mac)
-│   ├── take-screenshot.ts   # desktopCapturer → base64 PNG
+│   ├── take-screenshot.ts   # desktopCapturer → base64 PNG (timeout + retry + OS-level fallback when blocked)
 │   ├── transcription.ts     # DashScope WebSocket real-time speech-to-text
 │   ├── auto-updater.ts      # electron-updater: GitHub Releases, silent install on quit
 │   └── index.d.ts           # global.mainWindow type declaration
