@@ -415,7 +415,7 @@
       padding-bottom: 3.6rem;
     }
 
-    /* ---- Minimal mode (fullscreen + wake lock, tap gestures only) ---- */
+    /* ---- Minimal mode (fullscreen + wake lock, two big capture buttons) ---- */
     body.minimal #topbar,
     body.minimal #controls,
     body.minimal #pure-bar,
@@ -428,11 +428,9 @@
     }
     body.minimal #content {
       padding-top: calc(1rem + env(safe-area-inset-top));
-      padding-bottom: 2rem;
-      /* kill double-tap zoom so 2/3-tap gestures register cleanly */
-      touch-action: manipulation;
+      padding-bottom: 5.5rem;
     }
-    /* The only control kept in minimal mode: a small corner exit */
+    /* The only chrome kept in minimal mode: corner exit + big capture buttons */
     #minimal-exit {
       position: fixed;
       top: calc(0.6rem + env(safe-area-inset-top));
@@ -452,6 +450,38 @@
     }
     #minimal-exit:active {
       background: rgba(71, 85, 105, 0.85);
+    }
+    #minimal-actions {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: calc(0.8rem + env(safe-area-inset-bottom));
+      display: flex;
+      gap: 0.8rem;
+      z-index: 30;
+      padding: 0 1rem;
+    }
+    #minimal-actions button {
+      flex: 1;
+      padding: 1rem 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      border-radius: 1rem;
+      background: rgba(37, 99, 235, 0.85);
+      border: 1px solid rgba(37, 99, 235, 0.9);
+      color: #fff;
+      touch-action: manipulation;
+    }
+    #minimal-actions button:active {
+      background: rgba(29, 78, 216, 0.92);
+    }
+    #minimal-actions #minimal-append {
+      background: rgba(51, 65, 85, 0.85);
+      border-color: rgba(71, 85, 105, 0.9);
+      color: #e2e8f0;
+    }
+    #minimal-actions #minimal-append:active {
+      background: rgba(71, 85, 105, 0.92);
     }
     #shot-modal {
       position: fixed;
@@ -478,7 +508,7 @@
     <span class="spacer"></span>
     <button id="btn-font-minus" class="icon-btn" title="减小字号">A-</button>
     <button id="btn-font-plus" class="icon-btn" title="增大字号">A+</button>
-    <button id="btn-minimal" class="icon-btn" title="极简模式：双击截屏，三击追加截图">极简</button>
+    <button id="btn-minimal" class="icon-btn" title="极简模式：只留截屏/追加截图大按钮">极简</button>
     <button id="btn-fullscreen" class="icon-btn" title="全屏只看答案">全屏</button>
   </header>
 
@@ -527,6 +557,10 @@
   </div>
   <div id="shot-modal" hidden><img id="shot-modal-img" alt="截图预览" /></div>
   <button id="minimal-exit" hidden title="退出极简模式">✕</button>
+  <div id="minimal-actions" hidden>
+    <button id="minimal-capture">📷 截屏</button>
+    <button id="minimal-append">追加截图</button>
+  </div>
 
   <script>
     ;(function () {
@@ -1016,18 +1050,15 @@
         }
       })
 
-      // ---- Minimal mode: fullscreen answer + wake lock, tap gestures only ----
-      // All chrome hidden except a small corner exit button: 2 taps = capture,
-      // 3 taps = append. Tap counting waits for a short silence window so 2
-      // vs 3 can be told apart.
+      // ---- Minimal mode: fullscreen answer + wake lock, two big buttons ----
+      // All chrome hidden except a small corner exit and two large capture
+      // buttons at the bottom (thumb-friendly, no gestures to remember).
       var minimalMode = false
-      var TAP_WINDOW = 350
-      var tapCount = 0
-      var tapTimer = null
 
       function applyMinimal() {
         document.body.classList.toggle('minimal', minimalMode)
         $('minimal-exit').hidden = !minimalMode
+        $('minimal-actions').hidden = !minimalMode
       }
 
       function enterMinimal() {
@@ -1039,95 +1070,24 @@
         applyMinimal()
         requestWakeLock()
         enterSystemFullscreen()
-        showToast('极简模式：双击截屏 · 三击追加截图')
       }
 
       function exitMinimal() {
         minimalMode = false
         applyMinimal()
         exitSystemFullscreen()
-        showToast('已退出极简模式')
       }
 
       $('btn-minimal').addEventListener('click', enterMinimal)
       $('pure-minimal').addEventListener('click', enterMinimal)
       $('minimal-exit').addEventListener('click', exitMinimal)
-
-      function registerTap() {
-        tapCount++
-        if (tapTimer) clearTimeout(tapTimer)
-        tapTimer = setTimeout(function () {
-          var taps = tapCount
-          tapCount = 0
-          tapTimer = null
-          if (!minimalMode) return
-          if (taps === 2) {
-            send({ type: 'take-screenshot' })
-            showToast('已触发截屏')
-          } else if (taps === 3) {
-            send({ type: 'append-screenshot' })
-            showToast('已追加截图')
-          }
-        }, TAP_WINDOW)
-      }
-
-      // Touch-based tap detection. Click events are unreliable for rapid
-      // multi-taps on phones: WeChat / OEM browsers often ignore
-      // touch-action:manipulation and let double-tap-zoom swallow the second
-      // click. So count taps from touchend directly; preventDefault both
-      // suppresses the double-tap zoom and the synthesized click.
-      var touchStart = null
-      var touchInvalid = false
-      var lastTouchTapAt = 0
-
-      content.addEventListener(
-        'touchstart',
-        function (e) {
-          if (e.touches.length > 1) {
-            touchInvalid = true // pinch zoom is not a tap
-            return
-          }
-          touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-          touchInvalid = false
-        },
-        { passive: true }
-      )
-      content.addEventListener(
-        'touchmove',
-        function () {
-          touchInvalid = true // scrolling is not a tap
-        },
-        { passive: true }
-      )
-      content.addEventListener('touchcancel', function () {
-        touchInvalid = true
-        touchStart = null
+      $('minimal-capture').addEventListener('click', function () {
+        send({ type: 'take-screenshot' })
+        showToast('已触发截屏')
       })
-      content.addEventListener(
-        'touchend',
-        function (e) {
-          if (!minimalMode || touchInvalid || !touchStart) return
-          var t = e.changedTouches[0]
-          var dx = t.clientX - touchStart.x
-          var dy = t.clientY - touchStart.y
-          touchStart = null
-          if (dx * dx + dy * dy > 30 * 30) return // dragged too far
-          // Don't hijack taps on interactive leftovers (code copy buttons)
-          if (e.target.closest('button, a, input, textarea')) return
-          e.preventDefault()
-          lastTouchTapAt = Date.now()
-          registerTap()
-        },
-        { passive: false }
-      )
-
-      // Mouse fallback (desktop preview); skip clicks right after a handled
-      // touch so a browser that still synthesizes a click doesn't double count
-      content.addEventListener('click', function (e) {
-        if (!minimalMode) return
-        if (Date.now() - lastTouchTapAt < 500) return
-        if (e.target.closest('button, a, input, textarea')) return
-        registerTap()
+      $('minimal-append').addEventListener('click', function () {
+        send({ type: 'append-screenshot' })
+        showToast('已追加截图')
       })
 
       // ---- Font scale ----
