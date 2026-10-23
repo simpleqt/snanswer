@@ -50,16 +50,34 @@ function sendToRenderer(channel: string, ...args: unknown[]) {
   }
 }
 
+/**
+ * Rank a LAN IPv4 address for the phone QR code / URL list (issue #6).
+ * Lower rank = shown/encoded first:
+ *   0 — RFC 1918 private (10/8, 172.16/12, 192.168/16): reachable on real Wi-Fi
+ *   1 — other unicast (public IPs etc.)
+ *   2 — 100.64/10 CGNAT (Tailscale & co.): only usable by devices in the same
+ *        virtual network, so keep them listed but never first
+ *   3 — 169.254/16 link-local (APIPA): never routable to the phone, last resort
+ */
+function lanAddressRank(address: string): number {
+  const [a = -1, b = -1] = address.split('.').map(Number)
+  if (a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)) return 0
+  if (a === 100 && b >= 64 && b <= 127) return 2
+  if (a === 169 && b === 254) return 3
+  return 1
+}
+
 function getLanUrls(port: number): string[] {
-  const urls: string[] = []
+  const entries: { url: string; rank: number }[] = []
   for (const nics of Object.values(networkInterfaces())) {
     for (const nic of nics ?? []) {
       if (nic.family === 'IPv4' && !nic.internal) {
-        urls.push(`http://${nic.address}:${port}`)
+        entries.push({ url: `http://${nic.address}:${port}`, rank: lanAddressRank(nic.address) })
       }
     }
   }
-  return urls
+  // Stable sort keeps enumeration order within the same rank
+  return entries.sort((x, y) => x.rank - y.rank).map((entry) => entry.url)
 }
 
 export function getMobileServerInfo(): MobileServerInfo {

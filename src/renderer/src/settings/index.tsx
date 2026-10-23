@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useSettingsStore, PRESET_SCENE_PROMPTS } from '@/lib/store/settings'
-import { isMac } from '@/lib/utils/env'
+import { isMac, isWindows } from '@/lib/utils/env'
 import { SelectModel } from './SelectModel'
 import { CustomShortcuts, ResetDefaultShortcuts } from './CustomShortcuts'
 import {
@@ -302,6 +302,19 @@ export default function SettingsPage() {
       .then(() => toast.success('已复制到剪贴板'))
       .catch(() => toast.error('复制失败'))
   }
+
+  // Matches lanAddressRank() in src/main/mobile-server.ts: addresses that only
+  // work inside virtual networks get a gray annotation so users skip them
+  const lanUrlNote = (url: string): string | null => {
+    const host = url.replace(/^https?:\/\//, '').split(':')[0] ?? ''
+    const [a, b] = host.split('.').map(Number)
+    if (a === 169 && b === 254) return '链路本地地址，基本无法连接'
+    if (a === 100 && b >= 64 && b <= 127)
+      return '虚拟组网地址（如 Tailscale），仅限同虚拟网络的设备'
+    return null
+  }
+
+  const firewallRuleCommand = `netsh advfirewall firewall add rule name="Snanswer-PhoneDisplay" dir=in action=allow protocol=TCP localport=${mobileServerPort}`
 
   return (
     <>
@@ -1023,21 +1036,45 @@ export default function SettingsPage() {
                     </div>
                     <div className="text-xs space-y-1.5 min-w-0">
                       <div>手机与电脑连接同一 Wi-Fi，扫码或输入地址访问：</div>
-                      {mobileInfo.urls.map((url) => (
-                        <div
-                          key={url}
-                          className="font-mono break-all cursor-pointer hover:text-blue-700 transition-colors"
-                          title="点击复制完整链接"
-                          onClick={() =>
-                            copyToClipboard(
-                              `${url}/?token=${encodeURIComponent(mobilePairingToken)}`
-                            )
-                          }
-                        >
-                          {url}/?token={mobilePairingToken}
-                        </div>
-                      ))}
+                      {mobileInfo.urls.map((url) => {
+                        const note = lanUrlNote(url)
+                        return (
+                          <div
+                            key={url}
+                            className="font-mono break-all cursor-pointer hover:text-blue-700 transition-colors"
+                            title="点击复制完整链接"
+                            onClick={() =>
+                              copyToClipboard(
+                                `${url}/?token=${encodeURIComponent(mobilePairingToken)}`
+                              )
+                            }
+                          >
+                            {url}/?token={mobilePairingToken}
+                            {note && <span className="font-sans text-gray-500">（{note}）</span>}
+                          </div>
+                        )
+                      })}
                     </div>
+                  </div>
+                )}
+
+                {isWindows && (
+                  <div className="p-3 bg-yellow-100/80 border border-yellow-500 rounded-md text-xs space-y-1.5">
+                    <div className="font-medium text-yellow-800">
+                      手机扫码或输入地址后一直转圈？
+                    </div>
+                    <div className="text-yellow-800/90">
+                      可能是 Windows 防火墙拦截了端口 {mobileServerPort}
+                      的入站连接（服务显示「运行中」也可能被拦截）。以管理员身份打开 PowerShell
+                      或终端，执行以下命令放行（点击命令即可复制）：
+                    </div>
+                    <code
+                      className="block font-mono bg-white/80 rounded px-2 py-1.5 break-all cursor-pointer hover:bg-white"
+                      title="点击复制命令"
+                      onClick={() => copyToClipboard(firewallRuleCommand)}
+                    >
+                      {firewallRuleCommand}
+                    </code>
                   </div>
                 )}
               </>
