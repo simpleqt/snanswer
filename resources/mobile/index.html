@@ -414,6 +414,45 @@
     body.pure #content {
       padding-bottom: 3.6rem;
     }
+
+    /* ---- Minimal mode (fullscreen + wake lock, tap gestures only) ---- */
+    body.minimal #topbar,
+    body.minimal #controls,
+    body.minimal #pure-bar,
+    body.minimal #exit-fullscreen {
+      display: none;
+    }
+    body.minimal {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    body.minimal #content {
+      padding-top: calc(1rem + env(safe-area-inset-top));
+      padding-bottom: 2rem;
+      /* kill double-tap zoom so 2/3-tap gestures register cleanly */
+      touch-action: manipulation;
+    }
+    /* The only control kept in minimal mode: a small corner exit */
+    #minimal-exit {
+      position: fixed;
+      top: calc(0.6rem + env(safe-area-inset-top));
+      right: 0.6rem;
+      z-index: 30;
+      width: 1.8rem;
+      height: 1.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(51, 65, 85, 0.55);
+      color: #94a3b8;
+      border: 1px solid rgba(71, 85, 105, 0.7);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      line-height: 1;
+    }
+    #minimal-exit:active {
+      background: rgba(71, 85, 105, 0.85);
+    }
     #shot-modal {
       position: fixed;
       inset: 0;
@@ -439,6 +478,7 @@
     <span class="spacer"></span>
     <button id="btn-font-minus" class="icon-btn" title="减小字号">A-</button>
     <button id="btn-font-plus" class="icon-btn" title="增大字号">A+</button>
+    <button id="btn-minimal" class="icon-btn" title="极简模式：双击截屏，三击追加截图">极简</button>
     <button id="btn-fullscreen" class="icon-btn" title="全屏只看答案">全屏</button>
   </header>
 
@@ -483,8 +523,10 @@
     <button id="pure-scene">📑 场景</button>
     <button id="pure-assistant">🎙 助手:关</button>
     <button id="pure-dblclick">🖱 截屏:关</button>
+    <button id="pure-minimal">极简</button>
   </div>
   <div id="shot-modal" hidden><img id="shot-modal-img" alt="截图预览" /></div>
+  <button id="minimal-exit" hidden title="退出极简模式">✕</button>
 
   <script>
     ;(function () {
@@ -908,37 +950,31 @@
         $('pure-bar').hidden = !pureMode
       }
 
-      function enterPure() {
-        pureMode = true
-        applyPure()
-        requestWakeLock()
+      // Only use the system fullscreen when we can also lock orientation
+      // (Android Chrome/Edge). Elsewhere (iOS, WeChat, OEM browsers) element
+      // fullscreen itself can force landscape with no way to lock portrait,
+      // so those stay in the CSS-only layout, which never rotates.
+      function enterSystemFullscreen() {
         var root = document.documentElement
         var orientationApi = screen.orientation
-        // Only use the system fullscreen when we can also lock orientation
-        // (Android Chrome/Edge). Elsewhere (iOS, WeChat, OEM browsers) element
-        // fullscreen itself can force landscape with no way to lock portrait,
-        // so those stay in the CSS pure layout, which never rotates.
         var canLock =
           orientationApi && typeof orientationApi.lock === 'function' && root.requestFullscreen
-        if (canLock) {
-          root
-            .requestFullscreen()
-            .then(function () {
-              orientationApi.lock('portrait').catch(function () {
-                // Lock refused (e.g. plain-HTTP insecure context): leave
-                // fullscreen instead of staying in browser-forced landscape
-                if (document.fullscreenElement && document.exitFullscreen) {
-                  document.exitFullscreen().catch(function () {})
-                }
-              })
+        if (!canLock) return
+        root
+          .requestFullscreen()
+          .then(function () {
+            orientationApi.lock('portrait').catch(function () {
+              // Lock refused (e.g. plain-HTTP insecure context): leave
+              // fullscreen instead of staying in browser-forced landscape
+              if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(function () {})
+              }
             })
-            .catch(function () {})
-        }
+          })
+          .catch(function () {})
       }
 
-      function exitPure() {
-        pureMode = false
-        applyPure()
+      function exitSystemFullscreen() {
         if (screen.orientation && screen.orientation.unlock) {
           try {
             screen.orientation.unlock()
@@ -949,6 +985,19 @@
         if (document.fullscreenElement && document.exitFullscreen) {
           document.exitFullscreen().catch(function () {})
         }
+      }
+
+      function enterPure() {
+        pureMode = true
+        applyPure()
+        requestWakeLock()
+        enterSystemFullscreen()
+      }
+
+      function exitPure() {
+        pureMode = false
+        applyPure()
+        exitSystemFullscreen()
       }
 
       $('btn-fullscreen').addEventListener('click', function () {
@@ -965,6 +1014,64 @@
         if (pureMode && !document.fullscreenElement) {
           applyPure()
         }
+      })
+
+      // ---- Minimal mode: fullscreen answer + wake lock, tap gestures only ----
+      // All chrome hidden except a small corner exit button: 2 taps = capture,
+      // 3 taps = append. Tap counting waits for a short silence window so 2
+      // vs 3 can be told apart.
+      var minimalMode = false
+      var TAP_WINDOW = 350
+      var tapCount = 0
+      var tapTimer = null
+
+      function applyMinimal() {
+        document.body.classList.toggle('minimal', minimalMode)
+        $('minimal-exit').hidden = !minimalMode
+      }
+
+      function enterMinimal() {
+        if (pureMode) {
+          pureMode = false
+          applyPure()
+        }
+        minimalMode = true
+        applyMinimal()
+        requestWakeLock()
+        enterSystemFullscreen()
+        showToast('极简模式：双击截屏 · 三击追加截图')
+      }
+
+      function exitMinimal() {
+        minimalMode = false
+        applyMinimal()
+        exitSystemFullscreen()
+        showToast('已退出极简模式')
+      }
+
+      $('btn-minimal').addEventListener('click', enterMinimal)
+      $('pure-minimal').addEventListener('click', enterMinimal)
+      $('minimal-exit').addEventListener('click', exitMinimal)
+
+      content.addEventListener('click', function (e) {
+        if (!minimalMode) return
+        // Don't hijack clicks on interactive leftovers (code copy buttons)
+        if (e.target.closest('button, a, input, textarea')) return
+        tapCount++
+        if (tapTimer) clearTimeout(tapTimer)
+        tapTimer = setTimeout(function () {
+          var taps = tapCount
+          tapCount = 0
+          tapTimer = null
+          if (!minimalMode) return
+          if (taps === 2) {
+            send({ type: 'take-screenshot' })
+            showToast('已触发截屏')
+          } else if (taps === 3) {
+            send({ type: 'append-screenshot' })
+            showToast('已追加截图')
+          }
+        }, TAP_WINDOW)
       })
 
       // ---- Font scale ----
