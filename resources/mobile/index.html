@@ -265,13 +265,14 @@
       background: rgba(15, 23, 42, 0.92);
       border: 1px solid #334155;
       color: #e2e8f0;
-      border-radius: 2rem;
+      border-radius: 1rem;
       padding: 0.4rem 1rem;
       font-size: 0.8rem;
-      white-space: nowrap;
-      max-width: 90vw;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      /* wrap long messages (e.g. capture-blocked reasons) instead of
+         truncating them to an ellipsis */
+      white-space: normal;
+      text-align: center;
+      max-width: 85vw;
       opacity: 0;
       transition: opacity 0.25s;
       pointer-events: none;
@@ -415,27 +416,24 @@
       padding-bottom: 3.6rem;
     }
 
-    /* ---- Minimal mode (fullscreen + wake lock, two big capture buttons) ---- */
+    /* ---- Minimal mode (remote control: two big buttons, no content) ---- */
     body.minimal #topbar,
     body.minimal #controls,
     body.minimal #pure-bar,
-    body.minimal #exit-fullscreen {
+    body.minimal #exit-fullscreen,
+    body.minimal #content {
       display: none;
     }
     body.minimal {
       -webkit-user-select: none;
       user-select: none;
     }
-    body.minimal #content {
-      padding-top: calc(1rem + env(safe-area-inset-top));
-      padding-bottom: 5.5rem;
-    }
-    /* The only chrome kept in minimal mode: corner exit + big capture buttons */
+    /* The only chrome kept in minimal mode: corner exit floats above buttons */
     #minimal-exit {
       position: fixed;
-      top: calc(0.6rem + env(safe-area-inset-top));
-      right: 0.6rem;
-      z-index: 30;
+      top: calc(0.9rem + env(safe-area-inset-top));
+      right: 0.9rem;
+      z-index: 40;
       width: 1.8rem;
       height: 1.8rem;
       display: flex;
@@ -453,20 +451,22 @@
     }
     #minimal-actions {
       position: fixed;
+      top: calc(0.6rem + env(safe-area-inset-top));
+      bottom: calc(0.6rem + env(safe-area-inset-bottom));
       left: 0;
       right: 0;
-      bottom: calc(0.8rem + env(safe-area-inset-bottom));
       display: flex;
+      flex-direction: column;
       gap: 0.8rem;
-      z-index: 30;
-      padding: 0 1rem;
+      z-index: 20;
+      padding: 0.6rem;
     }
     #minimal-actions button {
       flex: 1;
-      padding: 1rem 0.5rem;
-      font-size: 1.05rem;
-      font-weight: 600;
-      border-radius: 1rem;
+      width: 100%;
+      font-size: 1.5rem;
+      font-weight: 700;
+      border-radius: 1.2rem;
       background: rgba(37, 99, 235, 0.85);
       border: 1px solid rgba(37, 99, 235, 0.9);
       color: #fff;
@@ -676,8 +676,10 @@
               captureMode = payload.clickCapture.mode || 'off'
               applyDblClick()
             }
-            if (payload.errorMessage) showError(payload.errorMessage)
-            else hideError()
+            if (payload.errorMessage) {
+              if (minimalMode) showToast('失败：' + payload.errorMessage)
+              else showError(payload.errorMessage)
+            } else hideError()
             renderShots()
             renderSolution(true)
             setLoading(isLoading)
@@ -698,6 +700,7 @@
           case 'ai-loading-start':
             hideError()
             setLoading(true)
+            if (minimalMode) showToast('正在生成解答…')
             break
           case 'ai-loading-end':
             setLoading(false)
@@ -707,9 +710,13 @@
             scheduleRender()
             break
           case 'solution-error':
-            showError(payload || '生成失败')
+            if (minimalMode) showToast('失败：' + (payload || '生成失败'))
+            else showError(payload || '生成失败')
             break
           case 'solution-complete':
+            if (minimalMode) showToast('解答完成，电脑端查看')
+            renderSolution(true)
+            break
           case 'solution-stopped':
             renderSolution(true)
             break
@@ -1050,9 +1057,10 @@
         }
       })
 
-      // ---- Minimal mode: fullscreen answer + wake lock, two big buttons ----
-      // All chrome hidden except a small corner exit and two large capture
-      // buttons at the bottom (thumb-friendly, no gestures to remember).
+      // ---- Minimal mode: stealth remote control ----
+      // Blank fullscreen, no answer content at all — the phone is only a
+      // trigger: two big buttons (capture / append) + corner exit. Status
+      // feedback is transient toasts; read the answer on the desktop.
       var minimalMode = false
 
       function applyMinimal() {
