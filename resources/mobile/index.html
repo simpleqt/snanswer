@@ -1053,10 +1053,7 @@
       $('pure-minimal').addEventListener('click', enterMinimal)
       $('minimal-exit').addEventListener('click', exitMinimal)
 
-      content.addEventListener('click', function (e) {
-        if (!minimalMode) return
-        // Don't hijack clicks on interactive leftovers (code copy buttons)
-        if (e.target.closest('button, a, input, textarea')) return
+      function registerTap() {
         tapCount++
         if (tapTimer) clearTimeout(tapTimer)
         tapTimer = setTimeout(function () {
@@ -1072,6 +1069,65 @@
             showToast('已追加截图')
           }
         }, TAP_WINDOW)
+      }
+
+      // Touch-based tap detection. Click events are unreliable for rapid
+      // multi-taps on phones: WeChat / OEM browsers often ignore
+      // touch-action:manipulation and let double-tap-zoom swallow the second
+      // click. So count taps from touchend directly; preventDefault both
+      // suppresses the double-tap zoom and the synthesized click.
+      var touchStart = null
+      var touchInvalid = false
+      var lastTouchTapAt = 0
+
+      content.addEventListener(
+        'touchstart',
+        function (e) {
+          if (e.touches.length > 1) {
+            touchInvalid = true // pinch zoom is not a tap
+            return
+          }
+          touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+          touchInvalid = false
+        },
+        { passive: true }
+      )
+      content.addEventListener(
+        'touchmove',
+        function () {
+          touchInvalid = true // scrolling is not a tap
+        },
+        { passive: true }
+      )
+      content.addEventListener('touchcancel', function () {
+        touchInvalid = true
+        touchStart = null
+      })
+      content.addEventListener(
+        'touchend',
+        function (e) {
+          if (!minimalMode || touchInvalid || !touchStart) return
+          var t = e.changedTouches[0]
+          var dx = t.clientX - touchStart.x
+          var dy = t.clientY - touchStart.y
+          touchStart = null
+          if (dx * dx + dy * dy > 30 * 30) return // dragged too far
+          // Don't hijack taps on interactive leftovers (code copy buttons)
+          if (e.target.closest('button, a, input, textarea')) return
+          e.preventDefault()
+          lastTouchTapAt = Date.now()
+          registerTap()
+        },
+        { passive: false }
+      )
+
+      // Mouse fallback (desktop preview); skip clicks right after a handled
+      // touch so a browser that still synthesizes a click doesn't double count
+      content.addEventListener('click', function (e) {
+        if (!minimalMode) return
+        if (Date.now() - lastTouchTapAt < 500) return
+        if (e.target.closest('button, a, input, textarea')) return
+        registerTap()
       })
 
       // ---- Font scale ----

@@ -799,6 +799,21 @@ ipcMain.handle('sendFollowUpQuestion', (_event, question: string) =>
 
 // Mobile display mode hooks: window control and stream control reuse the
 // same logic as the desktop shortcut callbacks and IPC handlers.
+
+/**
+ * Phone-initiated captures are silently dropped by the callbacks when the
+ * desktop is not on the coder page or has no API key (e.g. the user scans
+ * the QR code from the settings page and double-taps right away). Turning
+ * that silence into a visible error keeps the phone side debuggable.
+ */
+function phoneCaptureBlockedReason(): string | null {
+  const mainWindow = global.mainWindow
+  if (!mainWindow || mainWindow.isDestroyed()) return '电脑端窗口不可用'
+  if (!state.inCoderPage) return '截屏未执行：请先让电脑端回到主界面（解题页）'
+  if (!settings.apiKey) return '截屏未执行：请先在电脑端设置中配置 AI API Key'
+  return null
+}
+
 setMobileController({
   hideMainWindow: () => {
     const mainWindow = global.mainWindow
@@ -824,8 +839,22 @@ setMobileController({
   },
   toggleMainWindow: () => callbacks.hideOrShowMainWindow(),
   sendFollowUp: (question) => handleFollowUpQuestion(question),
-  takeScreenshot: () => callbacks.takeScreenshot(),
-  appendScreenshot: () => callbacks.appendScreenshot(),
+  takeScreenshot: () => {
+    const blocked = phoneCaptureBlockedReason()
+    if (blocked) {
+      emitToClients('solution-error', blocked)
+      return
+    }
+    callbacks.takeScreenshot()
+  },
+  appendScreenshot: () => {
+    const blocked = phoneCaptureBlockedReason()
+    if (blocked) {
+      emitToClients('solution-error', blocked)
+      return
+    }
+    callbacks.appendScreenshot()
+  },
   toggleInterviewAssistant: () => toggleInterviewAssistant(),
   cycleClickCaptureMode: () => {
     // off → double → single → off
